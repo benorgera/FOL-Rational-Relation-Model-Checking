@@ -12,18 +12,24 @@ const sigma = 2, //0, 1, #
         else
             throw new Error('Track labels must agree');
       },
+      reverse = str => {   
+        for (var i = str.length - 1, rev = ''; i >= 0; i--)      
+            rev += str[i]; 
+        return rev;
+      },
+      reverseBinary = n => reverse(Number(n).toString(2)),
       getArray = () => [],
       // getArray = oldSc => oldSc > 32 ? new BigUint64Array() : oldSc > 16 ?
       //   new Uint32Array() : oldSc > 8 ? new Uint16Array() : new Uint8Array();
       isSatisfiable = T => typeof T === 'boolean' ? T : T.accept ? T.finalSize >
         0 : T.sc - T.finalSize > 0,
       AND = (T1, T2) => product(T1, T2, true),
-      OR = (T1, T2) => product(T1, T2, true),
+      OR = (T1, T2) => product(T1, T2, false),
       NOT = T => negate(T),
       EXISTS = (boundedVars, P) => rabinScott(P, boundedVars),
       FORALL = (boundedVars, P) => NOT(EXISTS(boundedVars, NOT(P)));
 
-var binaryAdd = {
+var PLUS = {
     delta: [[0,2,2,0,2,0,1,2],[2,0,1,2,1,2,2,1],[2,2,2,2,2,2,2,2]],
     sc: 3,
     tracks: 3,
@@ -32,6 +38,49 @@ var binaryAdd = {
     accept: true, // if final F or Q \ F
     finalSize: 1
 }
+
+var EQ = {
+    delta: [[0,1,1,0], [1,1,1,1]],
+    sc: 2,
+    tracks: 2,
+    trackLabels: ['x', 'y'],
+    final: { 0: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
+var LT = {
+    delta: [[0,1,0,0],[1,1,0,1]],
+    sc: 2,
+    tracks: 2,
+    trackLabels: ['x', 'y'],
+    final: { 1: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
+// var PLUSsharp = {
+//     delta: [[0,2,2,2,0,2,0,2,2,2,0,2,1,2,2,2,0,2,0,2,2,2,0,2,2,2,2],
+//       [2,0,2,1,2,2,2,2,2,1,2,2,2,1,2,1,2,2,2,2,2,1,2,2,2,0,2], 
+//         [2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2]],
+//     sc: 3,
+//     tracks: 3,
+//     trackLabels: ['x', 'y', 'z'],
+//     final: { 0: true },
+//     accept: true, // if final F or Q \ F
+//     finalSize: 1
+// }
+
+// var EQsharp = {
+//     delta: [[0,1,1,1,0,1,1,1,0], [1,1,1,1,1,1,1,1,1]],
+//     sc: 2,
+//     tracks: 2,
+//     trackLabels: ['x', 'y'],
+//     final: { 0: true },
+//     accept: true, // if final F or Q \ F
+//     finalSize: 1
+// }
+
 
 function isTransducer(T) {
     // by erasing all tracks you have only a boolean
@@ -258,28 +307,97 @@ function product(T1, T2, both) {
 // flip the accept and reject states, and optionally make a shallow copy of the
 // machine as to not negate the original
 function negate(T, copy) {
-    if (copy) {
-        var res = Object.assign({}, T);
-        res.final = !res.final;
-        return res;
-    } else {
-        T.final = !T.final;
-        return T;
-    }
+    if (copy)
+        T = Object.assign({}, T);
+
+    T.final = !T.final;
+    return T;
 }
 
-console.log(binaryAdd)
-console.log(isTransducer(binaryAdd))
+function run(x, T) {
+    // if we have a 0 track machine, the output is constant
+    if (typeof T === 'boolean')
+        return T;
 
-var res = rabinScott(binaryAdd, ['z']);
- console.log(isTransducer(res));
- var res3 = FORALL(['x'], AND(binaryAdd, res));
- console.log(isTransducer(res3));
- console.log(res3);
- console.log(binaryAdd);
-var res2 = AND(OR(res3, binaryAdd), res);
-console.log(isTransducer(res2));
-console.log(res2);
+    for (var i = 0, state = 0; i < x[0].length; i++) {
+        var char = '';
+
+        for (var j = 0; j < T.tracks; j++)
+            char += x[j][i];
+
+        state = T.delta[state][charInd(char)];
+    }
+
+    // !! to cast to boolean if undefined
+    return T.accept ? !!T.final[state] : !T.final[state];
+}
+
+var EQANDPLUS = AND(EQ, PLUS),
+    EQORPLUS = OR(EQ, PLUS),
+    LTANDPLUS = AND(LT, PLUS),
+    LTORPLUS = OR(LT, PLUS);
+
+console.log(isTransducer(PLUS), isTransducer(EQ), isTransducer(LT));
+
+function test() {
+    const len = Math.pow(sigma, 7);
+
+    for (var i = 0; i < len; i++) {
+        for (var j = 0; j < len; j++) {
+            var char1 = reverseBinary(i),
+                char2 = reverseBinary(j),
+                maxLen = Math.max(char1.length, char2.length);
+
+            char1 = char1.padEnd(maxLen, '0');
+            char2 = char2.padEnd(maxLen, '0');
+
+            var lt = run([char1, char2], LT),
+                eq = run([char1, char2], EQ);
+
+            if ((i === j) !== eq || (i < j) !== lt)
+                return false;
+
+            for (var k = 0; k < len; k++) {
+                var char3 = reverseBinary(k);
+
+                maxLen = Math.max(maxLen, char3.length);
+                char1 = char1.padEnd(maxLen, '0');
+                char2 = char2.padEnd(maxLen, '0');
+                char3 = char3.padEnd(maxLen, '0');
+
+                var input = [char1, char2, char3],
+                    plus = run(input, PLUS),
+                    ltandplus = run(input, LTANDPLUS),
+                    ltorplus = run(input, LTORPLUS),
+                    eqandplus = run(input, EQANDPLUS),
+                    eqorplus = run(input, EQORPLUS);
+
+                if (plus !== i + j === k || (lt && plus) !== ltandplus ||
+                    (lt || plus) !== ltorplus || (eq && plus) !== eqandplus ||
+                    (eq || plus) !== eqorplus) {
+                    console.log(i,j,k,lt,eq,plus,ltandplus, ltorplus, eqandplus,eqorplus)
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+console.log(test());
+
+// console.log(binaryAdd)
+// console.log(isTransducer(binaryAdd))
+
+// var res = rabinScott(binaryAdd, ['z']);
+//  console.log(isTransducer(res));
+//  var res3 = FORALL(['x'], AND(binaryAdd, res));
+//  console.log(isTransducer(res3));
+//  console.log(res3);
+//  console.log(binaryAdd);
+// var res2 = AND(OR(res3, binaryAdd), res);
+// console.log(isTransducer(res2));
+// console.log(res2);
 // res1 = EXISTS(['y'], res2);
 // console.log(isTransducer(res1));
 // console.log(res1);
