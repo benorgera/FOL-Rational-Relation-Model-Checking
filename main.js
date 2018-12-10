@@ -24,11 +24,10 @@ const sigma = 2, //0, 1
       },
       reverseBinary = n => reverse(Number(n).toString(2)),
       getArrayBySC = (sc, arr) => arr,
-      // getArrayBySC = sc => sc >= Math.pow(2, 32) ? new BigUint64Array() : sc > 16 ?
-      //   new Uint32Array() : oldSc > 8 ? new Uint16Array() : new Uint8Array(),
-      getArrayBySize = bpe => bpe === 8 ? new BigUint64Array() : bpe === 4 ?
-        new Uint32Array() : bpe === 2 ? new Uint16Array() : bpe === 1 ?
-        new Uint8Array() : [],
+      // getArrayBySC = (sc, arr) => sc >= 65536 ? new Uint32Array(arr) : sc >= 256 ?
+      //   new Uint16Array(arr) : new Uint8Array(arr),
+      getArrayBySize = (bpe, arr) => bpe === 4 ? new Uint32Array(arr) : bpe === 2 ?
+        new Uint16Array(arr) : bpe === 1 ? new Uint8Array(arr) : arr,
       isSatisfiable = T => typeof T === 'boolean' ? T : T.accept ? T.finalSize >
         0 : T.sc - T.finalSize > 0,
       AND = (T1, T2) => product(T1, T2, true),
@@ -77,8 +76,8 @@ function isTransducer(T) {
 	var alphabet = Math.pow(sigma, T.tracks);
 
 	if (T.delta.some(deltaS =>
-		deltaS.length !== alphabet || Math.pow(2, 8 * deltaS.BYTES_PER_ELEMENT)
-          < T.sc || deltaS.some(nextState => nextState < 0 || nextState >= T.sc)
+		deltaS.length !== alphabet ||
+          deltaS.some(nextState => nextState < 0 || nextState >= T.sc)
 	))
 		return false;
 
@@ -205,7 +204,7 @@ function bigToSmallAlphabet(moreTracks, fewerTracks, alphabetSize) {
         tracksUsed.push(ind);
     }
 
-    tracksUsed.sort((a, b) => a - b);
+    // tracksUsed.sort((a, b) => a.ind - b);
 
     for (var i = 0; i < alphabetSize; i++) {
 
@@ -222,10 +221,15 @@ function bigToSmallAlphabet(moreTracks, fewerTracks, alphabetSize) {
 }
 
 function product(T1, T2, both) {
-     var states = { '0,0': 0 }, // map from hashes of pairs of states of old machines to their new label
+
+    var states = { '0,0': 0 }, // map from hashes of pairs of states of old machines to their new label
         F = T1.tracks > T2.tracks ? T2 : T1, // F is the machine with fewer tracks
-        M = T1.tracks > T2.tracks ? T1 : T2, // M is the machine with more tracks
-        alphabetSize = Math.pow(sigma, M.tracks),
+        M = T1.tracks > T2.tracks ? T1 : T2; // M is the machine with more tracks
+    
+    if (!F.trackLabels.every(x => M.trackLabels.includes(x)))
+        M = addIgnoredTracks(M, F.trackLabels);
+
+    alphabetSize = Math.pow(sigma, M.tracks),
         Tnew = {
             delta: [],
             final: {},
@@ -329,14 +333,20 @@ function testArithmetic(M, assertion, inputLen) {
         var resActual = run(inputStrs, M),
             resExpected = assertion(...inputVals);
 
-        if (resActual !== resExpected)
+        if (resActual !== resExpected) {
+            console.log(`\nTest Failed On Input: <${inputVals}> (encoded as <${inputStrs}>)` + 
+                `\n\nExpected ${resExpected}, got ${resActual}\n`);
             return false;
+        }
     }
 
     return true;
 }
 
 function addIgnoredTracks(T, newLabels) {
+
+    newLabels = newLabels.filter(x => !T.trackLabels.includes(x));
+
     var res = copy(T),
         num = newLabels.length,
         alphabetSize = Math.pow(sigma, T.tracks + num);
@@ -347,13 +357,13 @@ function addIgnoredTracks(T, newLabels) {
 
     for (var i = 0; i < T.sc; i++) {
         var oldStateTable = T.delta[i],
-            newStateTable = getArrayBySize(oldStateTable.BYTES_PER_ELEMENT);
+            newStateTable = [];
 
         for (var j = 0; j < alphabetSize; j++)
             // the ith char is just i in binary, so right shifting ignores the last num many tracks
             newStateTable.push(oldStateTable[j >> num]);
 
-        res.delta.push(newStateTable);
+        res.delta.push(getArrayBySize(oldStateTable.BYTES_PER_ELEMENT, newStateTable));
     }
 
     return res;
@@ -375,7 +385,7 @@ function timesConstant(k, inputLabel, outputLabel, determinizeEachStep) {
 
     M.trackLabels[0] = A.trackLabels[0] = inputLabel;
     M.trackLabels[1] = A.trackLabels[1] = exists = nextLabel();
-    M.trackLabels[2] = prev = nextLabel();
+    M.trackLabels[2] = prev = k === 2 ? outputLabel : nextLabel();
 
     M = AND(M, A);
 
@@ -405,22 +415,6 @@ function timesConstant(k, inputLabel, outputLabel, determinizeEachStep) {
     return rabinScott(M, reserved);
 }
 
-
-// var res = rabinScott(binaryAdd, ['z']);
-//  console.log(isTransducer(res));
-//  var res3 = FORALL(['x'], AND(binaryAdd, res));
-//  console.log(isTransducer(res3));
-//  console.log(res3);
-//  console.log(binaryAdd);
-// var res2 = AND(OR(res3, binaryAdd), res);
-// console.log(isTransducer(res2));
-// console.log(res2);
-// res1 = EXISTS(['y'], res2);
-// console.log(isTransducer(res1));
-// console.log(res1);
-
-
-
 var PLUS = {
     delta: [[0,2,2,0,2,0,1,2],[2,0,1,2,1,2,2,1],[2,2,2,2,2,2,2,2]],
     sc: 3,
@@ -441,6 +435,16 @@ var EQ = {
     finalSize: 1
 }
 
+var EQ1 = {
+    delta: [[2,1],[1,2],[2,2]],
+    sc: 3,
+    tracks: 1,
+    trackLabels: ['x'],
+    final: { 1: true },
+    accept: true,
+    finalSize: 1
+}
+
 var LT = {
     delta: [[0,1,0,0],[1,1,0,1]],
     sc: 2,
@@ -451,33 +455,53 @@ var LT = {
     finalSize: 1
 }
 
+var MINUS = {
+    delta: [[0,2,2,1,2,0,0,2],[2,1,1,2,0,2,2,1],[2,2,2,2,2,2,2,2]],
+    sc: 3,
+    tracks: 3,
+    trackLabels: ['x', 'y', 'z'],
+    final: { 0: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
 var EQANDPLUS = AND(EQ, PLUS),
     EQORPLUS = OR(EQ, PLUS),
     LTANDPLUS = AND(LT, PLUS),
     LTORPLUS = OR(LT, PLUS),
     LTANDPLUSOREQ = OR(LTANDPLUS, EQ),
     T3 = timesConstant(3, 'x', 'y'),
-    T10 = timesConstant(10, 'x', 'y', true),
-    T6 = timesConstant(6, 'x', 'y'),
-    T62 = timesConstant(6, 'x', 'y', true),
-    T40 = timesConstant(40, 'x', 'y', true);
+    T5 = timesConstant(5, 'x', 'y');
 
-console.log(T40)
+var T10 = timesConstant(10, 'x', 'y', true),
+    T6 = timesConstant(6, 'x', 'y'),
+    T62 = timesConstant(6, 'x', 'y', true);
 
 console.log(testArithmetic(EQANDPLUS, (x,y,z) => x === y && x + y === z, 6));
 console.log(testArithmetic(T3, (x,y) => 3 * x === y, 6));
 console.log(testArithmetic(T10, (x,y) => 10 * x === y, 6));
+console.log(testArithmetic(T6, (x,y) => 6 * x === y, 6));
+console.log(testArithmetic(T62, (x,y) => 6 * x === y, 6));
+// console.log(testArithmetic(T20, (x,y) => 20 * x === y, 6));
+console.log(testArithmetic(MINUS, (x,y,z) => x - y === z, 6));
 
-console.log(T6.sc, T62.sc, testArithmetic(T6, (x,y) => 6 * x === y, 6),
-    testArithmetic(T62, (x,y) => 6 * x === y, 6));
 
+function linearDiophantineTest(A, B) {
+    
+    var minus = copy(MINUS),
+        eq1 = copy(EQ1),
+        timesA = timesConstant(A, 'x', 'Ax', true),
+        timesB = timesConstant(B, 'y', 'By', true);
+    
+    minus.trackLabels = ['Ax', 'By', 'z']; // Az - By = z
+    eq1.trackLabels = ['z']; // z = 1
 
-// var a = addIgnoredTracks(PLUS, ['a', 'b']);
-// console.log(a, isTransducer(a), run(['01', '10', '11', '01', '00'], a),
-//     run(['01', '10', '11'], PLUS));
+    var M = AND(AND(AND(minus, eq1), timesA), timesB);
 
-// var three = timesConstant(3, 'x', 'y');
+    console.log(M.sc);
 
-// console.log(three, isTransducer(three));
+    return EXISTS(['Ax', 'By', 'z', 'x', 'y'], M);
+}
 
-// console.log(run(['10', '11'], three));
+console.log(linearDiophantineTest(3, 6));
+
