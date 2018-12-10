@@ -1,5 +1,5 @@
 
-const sigma = 2, //0, 1, #
+const sigma = 2, //0, 1
       ithChar = (i, tracks) => Number(i).toString(sigma).padStart(tracks, '0'),
       charInd = char => parseInt(char, sigma),
       uniqueHash = set => Object.keys(set).sort((a, b) => a - b).join(','),
@@ -17,10 +17,18 @@ const sigma = 2, //0, 1, #
             rev += str[i]; 
         return rev;
       },
+      copy = M => {
+        var T = Object.assign({}, M);
+        T.trackLabels = T.trackLabels.slice();
+        return T;
+      },
       reverseBinary = n => reverse(Number(n).toString(2)),
-      getArray = () => [],
-      // getArray = oldSc => oldSc > 32 ? new BigUint64Array() : oldSc > 16 ?
-      //   new Uint32Array() : oldSc > 8 ? new Uint16Array() : new Uint8Array();
+      getArrayBySC = (sc, arr) => arr,
+      // getArrayBySC = sc => sc >= Math.pow(2, 32) ? new BigUint64Array() : sc > 16 ?
+      //   new Uint32Array() : oldSc > 8 ? new Uint16Array() : new Uint8Array(),
+      getArrayBySize = bpe => bpe === 8 ? new BigUint64Array() : bpe === 4 ?
+        new Uint32Array() : bpe === 2 ? new Uint16Array() : bpe === 1 ?
+        new Uint8Array() : [],
       isSatisfiable = T => typeof T === 'boolean' ? T : T.accept ? T.finalSize >
         0 : T.sc - T.finalSize > 0,
       AND = (T1, T2) => product(T1, T2, true),
@@ -29,35 +37,6 @@ const sigma = 2, //0, 1, #
       EXISTS = (boundedVars, P) => rabinScott(P, boundedVars),
       FORALL = (boundedVars, P) => NOT(EXISTS(boundedVars, NOT(P)));
 
-var PLUS = {
-    delta: [[0,2,2,0,2,0,1,2],[2,0,1,2,1,2,2,1],[2,2,2,2,2,2,2,2]],
-    sc: 3,
-    tracks: 3,
-    trackLabels: ['x', 'y', 'z'],
-    final: { 0: true },
-    accept: true, // if final F or Q \ F
-    finalSize: 1
-}
-
-var EQ = {
-    delta: [[0,1,1,0], [1,1,1,1]],
-    sc: 2,
-    tracks: 2,
-    trackLabels: ['x', 'y'],
-    final: { 0: true },
-    accept: true, // if final F or Q \ F
-    finalSize: 1
-}
-
-var LT = {
-    delta: [[0,1,0,0],[1,1,0,1]],
-    sc: 2,
-    tracks: 2,
-    trackLabels: ['x', 'y'],
-    final: { 1: true },
-    accept: true, // if final F or Q \ F
-    finalSize: 1
-}
 
 // var PLUSsharp = {
 //     delta: [[0,2,2,2,0,2,0,2,2,2,0,2,1,2,2,2,0,2,0,2,2,2,0,2,2,2,2],
@@ -160,7 +139,7 @@ function rabinScott(T, trackLabelsErased) {
         Tnew = {
             delta: [],
             final: {},
-            tracks: T.tracks - tracksErased.length,
+            tracks: tracksKept.length,
             sc: 0, // number of reachable sets of states added to delta so far
             trackLabels: tracksKept.map(t => T.trackLabels[t]),
             accept: true,
@@ -175,9 +154,7 @@ function rabinScott(T, trackLabelsErased) {
 
         var stateSetHash = frontier[Tnew.sc],
             stateSet = listFromHash(stateSetHash),
-            deltaS = getArray(T.sc); // need array that can handle 2^T.sc states
-
-        // console.log('\nCurrent State Set: ' + stateSetHash);
+            deltaS = []; // need array that can handle 2^T.sc states
 
         // for each character in our new alphabet
         for (var i = 0; i < newAlphabetSize; i++) {
@@ -190,7 +167,6 @@ function rabinScott(T, trackLabelsErased) {
                     nextStateSet[T.delta[stateSet[k]][oldCharInd]] = true;
 
             var nextStateSetHash = uniqueHash(nextStateSet);
-            // console.log(`-char ${i} goes to: `, nextStateSetHash);
 
             // if set we transition to was already seen, map to its index
             if (states[nextStateSetHash] !== undefined)
@@ -208,7 +184,7 @@ function rabinScott(T, trackLabelsErased) {
             Tnew.finalSize++;
         }
 
-        Tnew.delta.push(deltaS);
+        Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
         Tnew.sc++;
     }
 
@@ -267,9 +243,7 @@ function product(T1, T2, both) {
 
         var stateSetHash = frontier[Tnew.sc],
             [ stateM, stateF ] = listFromHash(stateSetHash),
-            deltaS = getArray(Tnew.sc); // need array that can handle 2^T.sc states
-
-        // console.log('\nCurrent State Pair: ' + stateSetHash);
+            deltaS = [];
 
         // for each character in our new alphabet
         for (var i = 0; i < alphabetSize; i++) {
@@ -278,8 +252,6 @@ function product(T1, T2, both) {
                 nextStateM = M.delta[stateM][i],
                 nextStateF = F.delta[stateF][charIndF],
                 nextStateHash = nextStateM + ',' + nextStateF;
-
-            // console.log(`-char ${i} goes to: `, nextStateHash);
 
             // if set we transition to was already seen, map to its index
             if (states[nextStateHash] !== undefined)
@@ -297,7 +269,7 @@ function product(T1, T2, both) {
             Tnew.finalSize++;
         }
 
-        Tnew.delta.push(deltaS);
+        Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
         Tnew.sc++;
     }
 
@@ -308,7 +280,7 @@ function product(T1, T2, both) {
 // machine as to not negate the original
 function negate(T, copy) {
     if (copy)
-        T = Object.assign({}, T);
+        T = copy(T);
 
     T.final = !T.final;
     return T;
@@ -332,62 +304,107 @@ function run(x, T) {
     return T.accept ? !!T.final[state] : !T.final[state];
 }
 
-var EQANDPLUS = AND(EQ, PLUS),
-    EQORPLUS = OR(EQ, PLUS),
-    LTANDPLUS = AND(LT, PLUS),
-    LTORPLUS = OR(LT, PLUS);
+//test the assertion on every input up to inputLen
+function testArithmetic(M, assertion, inputLen) {
+    if (sigma !== 2)
+        throw new Error('Arithmetic test requires reverse binary encoding (sigma = 2)');
 
-console.log(isTransducer(PLUS), isTransducer(EQ), isTransducer(LT));
+    var numTests = Math.pow(sigma, inputLen * M.tracks),
+        mask = Math.pow(sigma, inputLen) - 1;
 
-function test() {
-    const len = Math.pow(sigma, 7);
+    for (var i = 0; i < numTests; i++) {
+        var inputStrs = [],
+            inputVals = [];
 
-    for (var i = 0; i < len; i++) {
-        for (var j = 0; j < len; j++) {
-            var char1 = reverseBinary(i),
-                char2 = reverseBinary(j),
-                maxLen = Math.max(char1.length, char2.length);
-
-            char1 = char1.padEnd(maxLen, '0');
-            char2 = char2.padEnd(maxLen, '0');
-
-            var lt = run([char1, char2], LT),
-                eq = run([char1, char2], EQ);
-
-            if ((i === j) !== eq || (i < j) !== lt)
-                return false;
-
-            for (var k = 0; k < len; k++) {
-                var char3 = reverseBinary(k);
-
-                maxLen = Math.max(maxLen, char3.length);
-                char1 = char1.padEnd(maxLen, '0');
-                char2 = char2.padEnd(maxLen, '0');
-                char3 = char3.padEnd(maxLen, '0');
-
-                var input = [char1, char2, char3],
-                    plus = run(input, PLUS),
-                    ltandplus = run(input, LTANDPLUS),
-                    ltorplus = run(input, LTORPLUS),
-                    eqandplus = run(input, EQANDPLUS),
-                    eqorplus = run(input, EQORPLUS);
-
-                if (plus !== i + j === k || (lt && plus) !== ltandplus ||
-                    (lt || plus) !== ltorplus || (eq && plus) !== eqandplus ||
-                    (eq || plus) !== eqorplus) {
-                    console.log(i,j,k,lt,eq,plus,ltandplus, ltorplus, eqandplus,eqorplus)
-                    return false;
-                }
-            }
+        for (var j = 0; j < M.tracks; j++) {
+            var val = (i >> (inputLen * j)) & mask;
+            inputVals.push(val);
+            inputStrs.push(reverseBinary(val));
         }
+
+        var maxLen = inputStrs.map(x => x.length).reduce((a, b) => Math.max(a, b));
+
+        inputStrs = inputStrs.map(x => x.padEnd(maxLen, '0'));
+
+        var resActual = run(inputStrs, M),
+            resExpected = assertion(...inputVals);
+
+        if (resActual !== resExpected)
+            return false;
     }
+
     return true;
 }
 
-console.log(test());
+function addIgnoredTracks(T, newLabels) {
+    var res = copy(T),
+        num = newLabels.length,
+        alphabetSize = Math.pow(sigma, T.tracks + num);
 
-// console.log(binaryAdd)
-// console.log(isTransducer(binaryAdd))
+    res.tracks = T.tracks + num;
+    res.delta = [];
+    res.trackLabels.push(...newLabels);
+
+    for (var i = 0; i < T.sc; i++) {
+        var oldStateTable = T.delta[i],
+            newStateTable = getArrayBySize(oldStateTable.BYTES_PER_ELEMENT);
+
+        for (var j = 0; j < alphabetSize; j++)
+            // the ith char is just i in binary, so right shifting ignores the last num many tracks
+            newStateTable.push(oldStateTable[j >> num]);
+
+        res.delta.push(newStateTable);
+    }
+
+    return res;
+}
+
+// requires k >= 2
+function timesConstant(k, inputLabel, outputLabel, determinizeEachStep) {
+   var M = copy(PLUS),
+       A = copy(EQ),
+       charCode = 65,
+       prev,
+       exists,
+       reserved = [inputLabel.charCodeAt(0), outputLabel.charCodeAt(0)],
+       nextLabel = () => {
+           var l = String.fromCharCode(charCode);
+           charCode++;
+           return reserved.includes(l) ? nextLabel() : (reserved.push(l) || true) && l;
+       };
+
+    M.trackLabels[0] = A.trackLabels[0] = inputLabel;
+    M.trackLabels[1] = A.trackLabels[1] = exists = nextLabel();
+    M.trackLabels[2] = prev = nextLabel();
+
+    M = AND(M, A);
+
+    if (determinizeEachStep)
+        M = rabinScott(M, [exists])
+
+    for (var i = 0; i < k - 2; i++) {
+        var T = copy(PLUS);
+
+        T.trackLabels[0] = inputLabel;
+        T.trackLabels[1] = exists = prev;
+        T.trackLabels[2] = prev = i === k - 3 ? outputLabel : nextLabel();
+
+        M = addIgnoredTracks(M, [prev]);
+        M = AND(M, T);
+
+        if (determinizeEachStep)
+            M = rabinScott(M, [exists]);
+    }
+
+    if (determinizeEachStep)
+        return M;
+
+    reserved.shift();
+    reserved.shift();
+
+    return rabinScott(M, reserved);
+}
+
 
 // var res = rabinScott(binaryAdd, ['z']);
 //  console.log(isTransducer(res));
@@ -401,3 +418,66 @@ console.log(test());
 // res1 = EXISTS(['y'], res2);
 // console.log(isTransducer(res1));
 // console.log(res1);
+
+
+
+var PLUS = {
+    delta: [[0,2,2,0,2,0,1,2],[2,0,1,2,1,2,2,1],[2,2,2,2,2,2,2,2]],
+    sc: 3,
+    tracks: 3,
+    trackLabels: ['x', 'y', 'z'],
+    final: { 0: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
+var EQ = {
+    delta: [[0,1,1,0], [1,1,1,1]],
+    sc: 2,
+    tracks: 2,
+    trackLabels: ['x', 'y'],
+    final: { 0: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
+var LT = {
+    delta: [[0,1,0,0],[1,1,0,1]],
+    sc: 2,
+    tracks: 2,
+    trackLabels: ['x', 'y'],
+    final: { 1: true },
+    accept: true, // if final F or Q \ F
+    finalSize: 1
+}
+
+var EQANDPLUS = AND(EQ, PLUS),
+    EQORPLUS = OR(EQ, PLUS),
+    LTANDPLUS = AND(LT, PLUS),
+    LTORPLUS = OR(LT, PLUS),
+    LTANDPLUSOREQ = OR(LTANDPLUS, EQ),
+    T3 = timesConstant(3, 'x', 'y'),
+    T10 = timesConstant(10, 'x', 'y', true),
+    T6 = timesConstant(6, 'x', 'y'),
+    T62 = timesConstant(6, 'x', 'y', true),
+    T40 = timesConstant(40, 'x', 'y', true);
+
+console.log(T40)
+
+console.log(testArithmetic(EQANDPLUS, (x,y,z) => x === y && x + y === z, 6));
+console.log(testArithmetic(T3, (x,y) => 3 * x === y, 6));
+console.log(testArithmetic(T10, (x,y) => 10 * x === y, 6));
+
+console.log(T6.sc, T62.sc, testArithmetic(T6, (x,y) => 6 * x === y, 6),
+    testArithmetic(T62, (x,y) => 6 * x === y, 6));
+
+
+// var a = addIgnoredTracks(PLUS, ['a', 'b']);
+// console.log(a, isTransducer(a), run(['01', '10', '11', '01', '00'], a),
+//     run(['01', '10', '11'], PLUS));
+
+// var three = timesConstant(3, 'x', 'y');
+
+// console.log(three, isTransducer(three));
+
+// console.log(run(['10', '11'], three));
