@@ -1,8 +1,12 @@
 
 const sigma = 2, //0, 1
+      fs = require('fs'),
+      queue = require('./Queue.js'),
+      writeToFile = (T, name) => fs.writeFile(`./machines/${name}`, T, 'utf8'),
       ithChar = (i, tracks) => Number(i).toString(sigma).padStart(tracks, '0'),
       charInd = char => parseInt(char, sigma),
-      uniqueHash = set => Object.keys(set).sort((a, b) => a - b).join(','),
+      stateListFromSet = set => Object.keys(set).map(x => parseInt(x)).sort((a, b) => a - b),
+      hashFromStateList = l => l.join(','),
       listFromHash = hash => hash.split(',').map(x => parseInt(x)),
       isFinal = (T, s) => T.accept ? T.final[s] : !T.final[s],
       labelsToTracks = (labels, table) => {
@@ -146,47 +150,52 @@ function rabinScott(T, trackLabelsErased) {
         },
         erasedTo = newCharsToOldChars(T.tracks, tracksKept),
         newAlphabetSize = Math.pow(sigma, Tnew.tracks),
-        frontier = ['0']; //queue of new state sets (not yet in delta, but already in states)
-        // so frontier[Tnew.sc] is next state needing attention
+        frontier = queue.singleton({ h: '0', s: [0] }), // queue of new states hashes and lists (not yet in delta, but already discovered)
+        newStateLabel = 1; // number of states we know about
 
-    while (frontier.length > Tnew.sc) {
+    while (!frontier.e) { // while queue isn't empty
 
-        var stateSetHash = frontier[Tnew.sc],
-            stateSet = listFromHash(stateSetHash),
+        var lookup = queue.deq(frontier),
+            hash = lookup.h, // the unique string representing this state
+            state = lookup.s, // state is current state (list of state labels from T)
+            label = states[hash], // label is its label in Tnew
             deltaS = []; // need array that can handle 2^T.sc states
 
         // for each character in our new alphabet
         for (var i = 0; i < newAlphabetSize; i++) {
-
             var charIPreimage = erasedTo[i],
                 nextStateSet = {};
 
             for (var j = 0; j < charIPreimage.length; j++)
-                for (var k = 0, oldCharInd = charIPreimage[j]; k < stateSet.length; k++)
-                    nextStateSet[T.delta[stateSet[k]][oldCharInd]] = true;
+                for (var k = 0, oldCharInd = charIPreimage[j]; k < state.length; k++)
+                    nextStateSet[T.delta[state[k]][oldCharInd]] = true;
 
-            var nextStateSetHash = uniqueHash(nextStateSet);
+            var nextStateList = stateListFromSet(nextStateSet),
+                nextStateHash = hashFromStateList(nextStateList);
 
-            // if set we transition to was already seen, map to its index
-            if (states[nextStateSetHash] !== undefined)
-                deltaS.push(states[nextStateSetHash]);
-            else { // otherwise give this new set the next index
-                deltaS.push(frontier.length);
-                states[nextStateSetHash] = frontier.length;
-                frontier.push(nextStateSetHash);
+            // if set we transition to was already seen, map to the label of that state
+            lookup = states[nextStateHash];
+            if (lookup !== undefined)
+                deltaS.push(lookup);
+            else { // otherwise give this new set the next label
+                deltaS.push(newStateLabel);
+                states[nextStateHash] = newStateLabel;
+                queue.enq(frontier, { h: nextStateHash, s: nextStateList });
+                newStateLabel++;
             }
         }
 
         // if it contains a state which was final, this set of states is final
-        if (stateSet.some(T.accept ? s => T.final[s] : s => !T.final[s])) {
-            Tnew.final[Tnew.sc] = true;
+        if (state.some(T.accept ? st => T.final[st] : st => !T.final[st])) {
+            Tnew.final[label] = true;
             Tnew.finalSize++;
         }
-
+        //with queue you go in order, not with stack
+        // Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
         Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
-        Tnew.sc++;
     }
 
+    Tnew.sc = newStateLabel;
     return Tnew;
 }
 
@@ -229,7 +238,7 @@ function product(T1, T2, both) {
     if (!F.trackLabels.every(x => M.trackLabels.includes(x)))
         M = addIgnoredTracks(M, F.trackLabels);
 
-    alphabetSize = Math.pow(sigma, M.tracks),
+    var alphabetSize = Math.pow(sigma, M.tracks),
         Tnew = {
             delta: [],
             final: {},
@@ -240,14 +249,17 @@ function product(T1, T2, both) {
             finalSize: 0
         },
         bigToSmallAlph = bigToSmallAlphabet(M, F, alphabetSize), // maps charInd of bigger alphabet to set of corresponding smaller charInds
-        frontier = ['0,0']; // queue of new state sets (not yet in delta, but already in states)
-        // so frontier[Tnew.sc] is next state needing attention
+        frontier = queue.singleton({ h: '0,0', m: 0, f: 0 }), // queue of new state hashes and lists (not yet in delta, but already in states)
+        newStateLabel = 1; // number of states we know about
 
-    while (frontier.length > Tnew.sc) {
+    while (!frontier.e) {
 
-        var stateSetHash = frontier[Tnew.sc],
-            [ stateM, stateF ] = listFromHash(stateSetHash),
-            deltaS = [];
+        var lookup = queue.deq(frontier),
+            hash = lookup.h, // the unique string representing this state
+            stateM = lookup.m, // current state pair
+            stateF = lookup.f,
+            label = states[hash], // label is its label in Tnew
+            deltaS = []; // need array that can handle 2^T.sc states
 
         // for each character in our new alphabet
         for (var i = 0; i < alphabetSize; i++) {
@@ -258,25 +270,27 @@ function product(T1, T2, both) {
                 nextStateHash = nextStateM + ',' + nextStateF;
 
             // if set we transition to was already seen, map to its index
-            if (states[nextStateHash] !== undefined)
-                deltaS.push(states[nextStateHash]);
+            lookup = states[nextStateHash];
+            if (lookup !== undefined)
+                deltaS.push(lookup);
             else { // otherwise give this new set the next index
-                deltaS.push(frontier.length);
-                states[nextStateHash] = frontier.length;
-                frontier.push(nextStateHash);
+                deltaS.push(newStateLabel);
+                states[nextStateHash] = newStateLabel;
+                queue.enq(frontier, { h: nextStateHash, m: nextStateM, f: nextStateF });
+                newStateLabel++;
             }
         }
 
         // determine if state is final (and vs or)
         if (both ? isFinal(M, stateM) && isFinal(F, stateF) : isFinal(M, stateM) || isFinal(F, stateF)) {
-            Tnew.final[Tnew.sc] = true;
+            Tnew.final[label] = true;
             Tnew.finalSize++;
         }
 
         Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
-        Tnew.sc++;
     }
 
+    Tnew.sc = newStateLabel;
     return Tnew;
 }
 
@@ -466,42 +480,62 @@ var MINUS = {
 }
 
 var EQANDPLUS = AND(EQ, PLUS),
-    EQORPLUS = OR(EQ, PLUS),
-    LTANDPLUS = AND(LT, PLUS),
-    LTORPLUS = OR(LT, PLUS),
-    LTANDPLUSOREQ = OR(LTANDPLUS, EQ),
-    T3 = timesConstant(3, 'x', 'y'),
-    T5 = timesConstant(5, 'x', 'y');
+    M = EXISTS(['x'], copy(PLUS));
+//     EQORPLUS = OR(EQ, PLUS),
+//     LTANDPLUS = AND(LT, PLUS),
+//     LTORPLUS = OR(LT, PLUS),
+//     LTANDPLUSOREQ = OR(LTANDPLUS, EQ),
+// var T9 = timesConstant(9, 'x', 'y', true);
+    // T5 = timesConstant(5, 'x', 'y');
+// console.log(T9)
 
-var T10 = timesConstant(10, 'x', 'y', true),
-    T6 = timesConstant(6, 'x', 'y'),
-    T62 = timesConstant(6, 'x', 'y', true);
+// var T10 = timesConstant(10, 'x', 'y', true),
+//     T6 = timesConstant(6, 'x', 'y'),
+//     T62 = timesConstant(6, 'x', 'y', true);
 
-console.log(testArithmetic(EQANDPLUS, (x,y,z) => x === y && x + y === z, 6));
-console.log(testArithmetic(T3, (x,y) => 3 * x === y, 6));
-console.log(testArithmetic(T10, (x,y) => 10 * x === y, 6));
-console.log(testArithmetic(T6, (x,y) => 6 * x === y, 6));
-console.log(testArithmetic(T62, (x,y) => 6 * x === y, 6));
-// console.log(testArithmetic(T20, (x,y) => 20 * x === y, 6));
-console.log(testArithmetic(MINUS, (x,y,z) => x - y === z, 6));
+console.log(PLUS);
+
+console.log(M, isTransducer(M))
+console.log(testArithmetic(M, (y,z) => y <= z, 6));
+// console.log(testArithmetic(EQANDPLUS, (x,y,z) => x === y && x + y === z, 7));
+// var o = EXISTS(['x'], EQANDPLUS);
+// console.log(testArithmetic(o, (y,z) => 2*y === z, 6));
+
+// console.log(testArithmetic(T9, (x,y) => 9 * x === y, 6));
+// console.log(testArithmetic(T10, (x,y) => 10 * x === y, 6));
+// console.log(testArithmetic(T6, (x,y) => 6 * x === y, 6));
+// console.log(testArithmetic(T62, (x,y) => 6 * x === y, 6));
+// // console.log(testArithmetic(T20, (x,y) => 20 * x === y, 6));
+// console.log(testArithmetic(MINUS, (x,y,z) => x - y === z, 6));
 
 
-function linearDiophantineTest(A, B) {
+function linearDiophantine(A, B, determinize) {
     
     var minus = copy(MINUS),
         eq1 = copy(EQ1),
         timesA = timesConstant(A, 'x', 'Ax', true),
         timesB = timesConstant(B, 'y', 'By', true);
     
-    minus.trackLabels = ['Ax', 'By', 'z']; // Az - By = z
+    console.log(timesA, timesB)
+
+    minus.trackLabels = ['Ax', 'By', 'z']; // Ax - By = z
     eq1.trackLabels = ['z']; // z = 1
 
-    var M = AND(AND(AND(minus, eq1), timesA), timesB);
+    var t = determinize ? rabinScott(AND(minus, eq1), ['z']) : AND(minus, eq1),
+        t1 = determinize ? rabinScott(AND(t, timesA), ['Ax']) : AND(t, timesA);
 
-    console.log(M.sc);
-
-    return EXISTS(['Ax', 'By', 'z', 'x', 'y'], M);
+    return rabinScott(AND(t1, timesB), determinize ? ['By'] : ['Ax', 'By', 'z']);
 }
 
-console.log(linearDiophantineTest(3, 6));
+var M1 = linearDiophantine(7, 21, true);
+
+
+    // var M2 = linearDiophantine(3, 5, true);
+console.log(M1, isTransducer(M1))
+// writeToFile(JSON.stringify(M2), '7x + 21y = 1');
+console.log(EXISTS(['x', 'y'], M1))
+// , EXISTS(['x', 'y'], M2));
+
+// 1317311
+
 
