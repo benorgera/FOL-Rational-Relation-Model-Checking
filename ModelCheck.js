@@ -1,10 +1,10 @@
 
-const sigma = 2, //0, 1
+const sigma = 2, // { 0, 1 }, but can be increased as needed
       fs = require('fs'),
-      linkedlist = require('./LinkedList.js'),
-      Transducers = require('./Transducers.js'),
+      linkedlist = require('./LinkedList'),
+      Transducers = require('./Transducers'),
       { PLUS, MINUS, EQ1, EQ } = Transducers,
-      writeToFile = (T, name) => fs.writeFile(`./machines/${name}`, JSON.stringify(T), 'utf8'),
+      writeToFile = (T, name) => fs.writeFile(`./constructions/${name}`, JSON.stringify(T), 'utf8'),
       ithChar = (i, tracks) => Number(i).toString(sigma).padStart(tracks, '0'),
       charInd = char => parseInt(char, sigma),
       stateListFromSet = set => Object.keys(set).map(x => parseInt(x)).sort((a, b) => a - b),
@@ -41,7 +41,7 @@ const sigma = 2, //0, 1
         0 : T.sc - T.finalSize > 0,
       AND = (T1, T2) => product(T1, T2, true),
       OR = (T1, T2) => product(T1, T2, false),
-      NOT = T => negate(T),
+      NOT = T => negate(T, true),
       EXISTS = (boundedVars, P) => rabinScott(P, boundedVars),
       FORALL = (boundedVars, P) => NOT(EXISTS(boundedVars, NOT(P)));
 
@@ -85,7 +85,6 @@ function isTransducer(T) {
 // scott transitive closure determinization
 // O(2^n) (sort of, this assumes the number of characters is fixed)
 function rabinScott(T, trackLabelsErased) {
-    console.log('rab')
 
     if (trackLabelsErased.length === T.tracks)
         return SAT(T);
@@ -107,8 +106,6 @@ function rabinScott(T, trackLabelsErased) {
         newStateLabel = 1; // number of states we know about
 
     while (!frontier.e) { // while linkedlist isn't empty
-
-        // console.log(frontier)
 
         var lookup = linkedlist.deq(frontier),
             hash = lookup.h, // the unique string representing this state
@@ -146,7 +143,6 @@ function rabinScott(T, trackLabelsErased) {
             Tnew.finalSize++;
         }
         // with linkedlist you go in order, not with stack
-        // Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
         Tnew.delta.push(deltaS);
     }
 
@@ -222,7 +218,7 @@ function product(T1, T2, both) {
     return Tnew;
 }
 
-// helper for erasing tracks in rabin scott
+// helper for erasing tracks in rabin-scott
 // maps each character index of new machine to set of indices that erased to it
 function smallToBigAlphabet(oldTrackCount, tracksKept) {
     // initialize map
@@ -243,7 +239,7 @@ function smallToBigAlphabet(oldTrackCount, tracksKept) {
     return res;
 }
 
-// helper for rabin scott, returns indices of tracks not erased
+// helper for rabin-scott, returns indices of tracks not erased
 function getTracksKept(tracksErased, oldTrackCount) {
 
     for (var i = 0, pos = 0, kept = []; i < oldTrackCount; i++) {
@@ -408,10 +404,6 @@ function linearDiophantine(A, B, determinize) {
         timesA = timesConstant(A, 'x', 'Ax', true),
         timesB = timesConstant(B, 'y', 'By', true);
 
-    console.log('??' + testArithmetic(timesA, (x, y) => x * A === y, 6));
-    console.log(run(['1'], eq1));
-    console.log('??' + testArithmetic(timesB, (x, y) => x * B === y, 6));
-
     minus.trackLabels = ['Ax', 'By', 'z']; // Ax - By = z
     eq1.trackLabels = ['z']; // z = 1
 
@@ -456,5 +448,5 @@ function testArithmetic(M, assertion, inputLen) {
     return true;
 }
 
-module.exports = { AND, OR, EXISTS, FORALL, SAT, NOT, timesConstant, linearDiophantine,
-    run, testArithmetic, copy, reverseBinary, addIgnoredTracks, isTransducer, Transducers };
+module.exports = { AND, OR, EXISTS, FORALL, SAT, NOT, timesConstant, linearDiophantine, run,
+    testArithmetic, copy, reverseBinary, writeToFile, addIgnoredTracks, isTransducer, Transducers };

@@ -1,4 +1,4 @@
-// a simple linked list implementation (needed to get optimal bounds on product/rabin scott)
+// a simple linked list implementation (needed to get optimal bounds on product/rabin-scott)
 
 function empty() {
 	return { h: null, t: null, e: true, s: 0 };
