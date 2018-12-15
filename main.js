@@ -105,6 +105,7 @@ function isTransducer(T) {
 
 // map from new alphabet to the characters in the old alphabet which erase to it
 function newCharsToOldChars(oldTrackCount, tracksKept) {
+    console.log(tracksKept)
     // initialize map
     for (var i = 0, res = []; i < Math.pow(sigma, tracksKept.length); i++)
         res.push([]);
@@ -119,6 +120,8 @@ function newCharsToOldChars(oldTrackCount, tracksKept) {
 
         res[charInd(charNew)].push(i);
     }
+
+    console.log(res)
 
     return res;
 }
@@ -196,7 +199,7 @@ function rabinScott(T, trackLabelsErased) {
         }
         //with queue you go in order, not with stack
         // Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
-        Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
+        Tnew.delta[label] = getArrayBySC(Tnew.sc, deltaS);
     }
 
     Tnew.sc = newStateLabel;
@@ -229,6 +232,8 @@ function bigToSmallAlphabet(moreTracks, fewerTracks, alphabetSize) {
 
         bigToSmall.push(charInd(charFewer)); // index i maps char i in the big alphabet to what it erases to
     }
+
+    console.log(bigToSmall)
 
     return bigToSmall;
 }
@@ -291,7 +296,7 @@ function product(T1, T2, both) {
             Tnew.finalSize++;
         }
 
-        Tnew.delta.push(getArrayBySC(Tnew.sc, deltaS));
+        Tnew.delta[label] = getArrayBySC(Tnew.sc, deltaS);
     }
 
     Tnew.sc = newStateLabel;
@@ -520,10 +525,40 @@ function linearDiophantine(A, B, determinize) {
         timesA = timesConstant(A, 'x', 'Ax', true),
         timesB = timesConstant(B, 'y', 'By', true);
     
-    console.log(timesA, timesB)
-
     minus.trackLabels = ['Ax', 'By', 'z']; // Ax - By = z
     eq1.trackLabels = ['z']; // z = 1
+
+    if (determinize) {
+        var t = AND(minus, eq1);
+        t = rabinScott(t, ['z']);
+        console.log('1: ' + testArithmetic(t, (Ax, By) => Ax - By === 1, 6))
+        t = AND(t, timesA)
+        t = rabinScott(t, ['Ax']);
+        console.log('2: ' + testArithmetic(t, (x, By) => x*A - By === 1, 6))
+        console.log(t.trackLabels)
+        t = AND(timesB, t);
+        console.log(t.trackLabels, timesB.trackLabels)
+        console.log('3: ' + testArithmetic(t, (x, By, y) => x*A - By === 1 && y * B === By, 7))
+        tr = rabinScott(t, ['By']);
+        console.log('4: ' + testArithmetic(tr, (x, y) => x*A - y*B === 1, 6))
+        console.log(t.trackLabels, isTransducer(t), t)
+        return tr;
+    } else {
+        var t = AND(minus, eq1);
+        // t = rabinScott(t, ['z']);
+        console.log('1: ' + testArithmetic(t, (Ax, By, z) => Ax - By === z && z === 1, 6))
+        t = AND(t, timesA)
+        // t = rabinScott(t, ['Ax']);
+        console.log('2: ' + testArithmetic(t, (Ax, By, z) => x*A - By === 1, 6))
+        console.log(t.trackLabels)
+        t = AND(timesB, t);
+        console.log(t.trackLabels, timesB.trackLabels)
+        console.log('3: ' + testArithmetic(t, (x, By, y) => x*A - By === 1 && y * B === By, 6))
+        t = rabinScott(t, ['By']);
+        console.log('4: ' + testArithmetic(t, (x, y) => x*A - y*B === 1, 6))
+        console.log(t.trackLabels, isTransducer(t), t)
+        return t; 
+    }
 
     var t = determinize ? rabinScott(AND(minus, eq1), ['z']) : AND(minus, eq1),
         t1 = determinize ? rabinScott(AND(t, timesA), ['Ax']) : AND(t, timesA);
@@ -531,15 +566,111 @@ function linearDiophantine(A, B, determinize) {
     return rabinScott(AND(t1, timesB), determinize ? ['By'] : ['Ax', 'By', 'z']);
 }
 
+
+// function linearDiophantine(A, B) {
+    
+//     var minus = copy(MINUS),
+//         eq1 = copy(EQ1),
+//         timesA = timesConstant(A, 'x', 'Ax', true),
+//         timesB = timesConstant(B, 'y', 'By', true);
+    
+//     minus.trackLabels = ['Ax', 'By', 'z']; // Az - By = z
+//     eq1.trackLabels = ['z']; // z = 1
+//      var M = AND(AND(AND(minus, eq1), timesA), timesB);
+//  // var a = addIgnoredTracks(PLUS, ['a', 'b']);
+// // console.log(a, isTransducer(a), run(['01', '10', '11', '01', '00'], a),
+// //     run(['01', '10', '11'], PLUS));
+//     console.log(M.sc);
+//  // var three = timesConstant(3, 'x', 'y');
+//     return EXISTS(['Ax', 'By', 'z', 'x', 'y'], M);
+// }
+
 // var M1 = linearDiophantine(7, 21, true);
 
 
     // var M2 = linearDiophantine(3, 5, true);
-console.log(M1, isTransducer(M1))
+// console.log(M1, isTransducer(M1))
 // writeToFile(JSON.stringify(M2), '7x + 21y = 1');
-console.log(EXISTS(['x', 'y'], M1))
+// console.log(EXISTS(['x', 'y'], M1))
 // , EXISTS(['x', 'y'], M2));
 
 // 1317311
+
+
+
+
+// load module and extract needed objects into our scope
+
+var EQANDPLUS = AND(EQ, PLUS), // x + y = z and x = y
+    EQORPLUS = OR(EQ, PLUS),
+    LTANDPLUS = AND(LT, PLUS),
+    LTORPLUS = OR(LT, PLUS),
+    LTANDPLUSOREQ = OR(LTANDPLUS, EQ); 
+
+
+console.log('Data Structure Invariant: ' + isTransducer(EQANDPLUS));
+
+// simple tests
+console.log('6 + 6 = 12 and 6 = 6: ' + run(['0110', '0110', '0011'], EQANDPLUS));
+console.log('4 + 6 = 10 and 4 = 6: ' + run(['001', '011', '0101'], EQANDPLUS));
+
+// more general tests (tests all pairs of strings on tracks up to the string <2^6 - 1>)
+console.log('+ transducer matches + function up to 2^6 (correctness assertion): ' + testArithmetic(PLUS, (x, y, z) => x + y === z, 6));
+console.log('Example failed correctness assertion (plus transducer matches minus function): ');
+testArithmetic(PLUS, (x, y, z) => x - y === z, 6);
+console.log('Correctness of EQANDPLUS up to 2^6: ' + testArithmetic(EQANDPLUS, (x, y, z) => x === y && x + y === z, 6));
+console.log('Correctness of - up to 2^6: ' + testArithmetic(MINUS, (x, y, z) => x - y === z, 6))
+
+// some multiplication tests
+var T3 = timesConstant(3, 'x', 'y'),
+    T6 = timesConstant(6, 'x', 'y'),
+    T10 = timesConstant(10, 'x', 'y', true);
+
+console.log('wtf: ' + testArithmetic(T3, (x, y) => 3 *x === y, 6))
+console.log('wtf: ' + testArithmetic(T6, (x, y) => 6 *x === y, 6))
+console.log('wtf: ' + testArithmetic(T10, (x, y) => 10 *x === y, 6))
+
+// leading zeros are optional
+console.log('3 x 3 = 9: ' + run(['11', '1001'], T3));
+console.log('6 x 2 = 12: ' + run(['01', '0011'], T6));
+console.log('6 x 18 = 118: ' + run(['01001', '110001'], T6));
+console.log('10 x 7 = 70: ' + run(['111', '0110001'], T10));
+console.log('3 x 4 = 11: ' + run(['001', '1101'], T3));
+console.log('6 x 9 = 64: ' + run(['1001', '0000001'], T6));
+console.log('10 x 9 = 70: ' + run(['1001', '0110001'], T10));
+console.log('10 x 7000 = 70: ' + run(['0001101011011', '1101101011000'], T10));
+
+
+console.log('Correctness of 6x = y up to 2^6: ' + testArithmetic(T6, (x,y) => 6 * x === y, 6));
+
+// example of adding ignored tracks
+var A = addIgnoredTracks(PLUS, ['a', 'b'], true);
+console.log('Ignored Tracks 2 + 1 = 3: ' + run(['01', '10', '11', '01', '00'], A));
+
+
+// example of linear diophantine
+var L = linearDiophantine(6, 5, true);
+console.log('6(1) - 5(1) = 1: ' + run(['1', '1'], L));
+console.log(L)
+console.log('Correctness of diophantine machine: ' + testArithmetic(L, (x, y) => 6 * x - 5 * y === 1, 6));
+
+console.log('hereeeee')
+// var L2 = linearDiophantine(14, 7, true); // unsatisfiable linear diophantine
+
+// some exists examples
+console.log('Exists x, y st. 5x - 6y = 1: ' + EXISTS(['x, y'], L));
+console.log('Exists x, y st. 14x - 7y = 1: ' + EXISTS(['x, y'], L2));
+
+
+// note that exists/forall can be used to just remove some tracks and make machine a function of
+// smaller alphabet, ie.
+var DIV3 = EXISTS(['x'], T3);
+console.log('3 | 9: ' + run(['1001', DIV3]));
+
+// also note that we maintain a reachability invariant so asking about satisfiability
+// of a machine or its negation can be done in constant time by checking size of set of final states
+console.log('5x - 6y = 1 is satisfiable: ' + SAT(L));
+console.log('14x - 7y = 1 is satisfiable: ' + SAT(L2));
+
 
 
