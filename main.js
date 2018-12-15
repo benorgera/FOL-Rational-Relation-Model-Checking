@@ -21,6 +21,10 @@ const sigma = 2, //0, 1
             rev += str[i]; 
         return rev;
       },
+      pad = inputStrs => {
+        var maxLen = inputStrs.map(x => x.length).reduce((a, b) => Math.max(a, b));
+        return inputStrs.map(x => x.padEnd(maxLen, '0'));
+      },
       copy = M => {
         var T = Object.assign({}, M);
         T.trackLabels = T.trackLabels.slice();
@@ -309,6 +313,8 @@ function run(x, T) {
     if (typeof T === 'boolean')
         return T;
 
+    x = pad(x);
+
     for (var i = 0, state = 0; i < x[0].length; i++) {
         var char = '';
 
@@ -340,9 +346,7 @@ function testArithmetic(M, assertion, inputLen) {
             inputStrs.push(reverseBinary(val));
         }
 
-        var maxLen = inputStrs.map(x => x.length).reduce((a, b) => Math.max(a, b));
-
-        inputStrs = inputStrs.map(x => x.padEnd(maxLen, '0'));
+        inputStrs = pad(inputStrs);
 
         var resActual = run(inputStrs, M),
             resExpected = assertion(...inputVals);
@@ -527,7 +531,7 @@ function linearDiophantine(A, B, determinize) {
     return rabinScott(AND(t1, timesB), determinize ? ['By'] : ['Ax', 'By', 'z']);
 }
 
-var M1 = linearDiophantine(7, 21, true);
+// var M1 = linearDiophantine(7, 21, true);
 
 
     // var M2 = linearDiophantine(3, 5, true);
