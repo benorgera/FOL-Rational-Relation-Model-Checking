@@ -1,0 +1,11 @@
+FOL Model Checking of Rational Structures, by Ben Orgera
+
+-Readme.md explains everything you need to know
+
+-ModelCheck.js contains my implementation of rational model checking
+
+-Transducers.js contains the base case transducers needed for Presburger Arithmetic
+
+-LinkedList.js was a quick data structure I implemented to speed up the transitive closure operations
+
+-constructions contains some example machines constructed (one has over 1,625,000 states), and is the directory where user constructed machines are written to file
